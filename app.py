@@ -1,6 +1,5 @@
 import azure.cognitiveservices.speech as speechsdk
 from google.oauth2 import service_account
-from pytube import YouTube
 from google.cloud import storage
 from google.cloud import datastore
 import glob
