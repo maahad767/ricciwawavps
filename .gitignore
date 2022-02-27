@@ -138,7 +138,6 @@ data.json
 # Cython debug symbols
 cython_debug/
 
-/ricciwawa-6e11b342c999.json
 /ricciwawaTestCase/
 /translation_data.json
 /initial_data.json
