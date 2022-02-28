@@ -53,8 +53,10 @@ def initiate_transcribing(filename):
     for each_file_name in file_list:
         blob = (bucket.blob(each_file_name))
         blob.upload_from_filename(each_file_name)
-        results.append(start_transcribing(each_file_name, "zh-CN"))
+        # TODO : Update this function and call start transcribing only once.
         print(each_file_name)
+    
+    results.append(start_transcribing(file_list, "zh-CN"))
     task["transcription_ids"] = results
     datastore_client.put(task)
     subprocess.run(f"rm out_{fname}_*.wav", shell=True)
@@ -64,17 +66,9 @@ def initiate_transcribing(filename):
 @app.route('/transcription/result/<tid>/')
 def get_transcription(tid):
     kind = 'TranscriptionTask'
-    # query = datastore_client.query(kind=kind)
-    # query.add_filter('fname', '=', tid)
-    # tasks = list(query.fetch())
     task = datastore_client.get(key=datastore_client.key(kind, tid))
     if task is None:
         return {"error": "invalid tid"}
-    
-    #if task['status'] == 'completed':
-    #    print("here")
-    #    print(task['transcript'])
-    #    return {"status": "success", "transcript": task['transcript']}
 
     success_flag = True
     text_url_list = []
@@ -105,7 +99,7 @@ def get_transcription(tid):
     return {"status": "incomplete"}
 
 # utils.py
-def download_get_signed_up(filename, bucket_name="ricciwawa"):
+def download_get_signed_up(filename, bucket_name="ricciwawa_mp3"):
     """
     Generates Signed Download URL
     """
@@ -120,20 +114,24 @@ def download_get_signed_up(filename, bucket_name="ricciwawa"):
     # print("curl '{}'".format(url))
     return url
 
-def start_transcribing(filename, language_code):
+def start_transcribing(filenames, language_code):
     bucket_name = "ricciwawa_tmp_files"
-    content_url = download_get_signed_up(filename, bucket_name)
+    content_urls = [download_get_signed_up(filename, bucket_name) for filename in filenames] 
+    
+    print(content_urls)
+
+    
     body = {
-        'contentUrls': [content_url],
+        'contentUrls': content_urls,
         'locale': language_code,
         'displayName': f'Transcription of file using default model for {language_code}'
     }
-    subscription_key = "aea95857cbf14d41b132fefe96a3052e"  # transfer this to settings.py
-    region = "eastasia"  # transfer this to settings.py
+    subscription_key = "d054b5988d384c6da942e00133de18e7"  # transfer this to settings.py
+    region = "centralus"  # transfer this to settings.py
     endpoint = f'https://{region}.api.cognitive.microsoft.com/speechtotext/v3.0/transcriptions'
     headers = {'Ocp-Apim-Subscription-Key': subscription_key}
     response = requests.post(endpoint, json=body, headers=headers).json()
-
+    print(response)
     transcription_id = response['self'].split('/')[-1]
 
     data = {
@@ -143,17 +141,18 @@ def start_transcribing(filename, language_code):
 
 
 def get_transcription_status(transcription_id):
-    subscription_key = "aea95857cbf14d41b132fefe96a3052e"  # transfer this to settings.py
-    region = "eastasia"  # transfer this to settings.py
+    subscription_key = "d054b5988d384c6da942e00133de18e7"  # transfer this to settings.py
+    region = "centralus"  # transfer this to settings.py
     endpoint = f'https://{region}.api.cognitive.microsoft.com/speechtotext/v3.0/transcriptions/{transcription_id}'
     headers = {'Ocp-Apim-Subscription-Key': subscription_key}
     response = requests.get(endpoint, headers=headers).json()
+    print(response)
     status = response['status']
     return status
 
 def get_transcription_url(transcription_id):
-    subscription_key = "aea95857cbf14d41b132fefe96a3052e"  # transfer this to settings.py
-    region = "eastasia"  # transfer this to settings.py
+    subscription_key = "d054b5988d384c6da942e00133de18e7"  # transfer this to settings.py
+    region = "centralus"  # transfer this to settings.py
     endpoint = f'https://{region}.api.cognitive.microsoft.com/speechtotext/v3.0/transcriptions/{transcription_id}/files'
     headers = {'Ocp-Apim-Subscription-Key': subscription_key}
     response = requests.get(endpoint, headers=headers).json()
