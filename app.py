@@ -11,13 +11,16 @@ import time
 
 from flask import Flask
 import subprocess
-
+import logging
 
 app = Flask(__name__)
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'ricciwawa-6e11b342c999.json'
 ricciwawa_credentials = service_account.Credentials.from_service_account_file("ricciwawa-6e11b342c999.json")
 storage_client = storage.Client()
 datastore_client = datastore.Client()
+gunicorn_logger = logging.getLogger('gunicorn.error')
+app.logger.handlers = gunicorn_logger.handlers
+app.logger.setLevel(gunicorn_logger.level)
 
 @app.route('/')
 def main():
@@ -44,8 +47,8 @@ def initiate_transcribing(filename):
     task = datastore.Entity(key=task_key)
     task['fname'] = fname
     task["status"] = "not-started"
-    subprocess.run('ls -al', shell=True)
-    subprocess.run('ffmpeg -version', shell=True)
+    # subprocess.run('ls -al', shell=True)
+    # subprocess.run('ffmpeg -version', shell=True)
     subprocess.run(f"ffmpeg -i {filename} -f segment -segment_time 30 -c copy out_{fname}_%03d.wav", shell=True)
     #subprocess.run(f'rm {filename}')
     file_list = glob.glob(f"out_{fname}_*.wav")
@@ -56,8 +59,6 @@ def initiate_transcribing(filename):
     for each_file_name in file_list:
         blob = (bucket.blob(each_file_name))
         blob.upload_from_filename(each_file_name)
-        # TODO : Update this function and call start transcribing only once.
-        print(each_file_name)
     
     results.append(start_transcribing(file_list, "zh-CN"))
     task["transcription_ids"] = results
@@ -66,11 +67,11 @@ def initiate_transcribing(filename):
     subprocess.run(f'rm {filename}', shell=True)
     end = time.time()
     # the time taken to segment the file using ffmpeg
-    print(round(mid-start, 2), 'seconds')
+    app.logger.info(f'{round(mid-start, 2)} seconds')
     # the time taken to upload the files to cloud storage
-    print(round(end-mid, 2), 'seconds')
+    app.logger.info(f'{round(end-mid, 2)} seconds')
     # the time taken to respond to the request
-    print(round(end-start, 2), 'seconds')
+    app.logger.info(f'{round(end-start, 2)} seconds')
     
     return {"status": "started", "transcript_id": fname}
 
@@ -104,8 +105,8 @@ def get_transcription(tid):
         datastore_client.put(task)
         # the time taken to complete seeking the result
         end = time.time()
-        print(round(end-start, 2), 'seconds')
-        
+        app.logger.info(f'{round(end-start, 2)} seconds')
+
         return json.dumps({"status": "success", 
                 "transcript": transcript}, ensure_ascii=False).encode('utf8')
     
@@ -133,9 +134,6 @@ def start_transcribing(filenames, language_code):
     bucket_name = "ricciwawa_tmp_files"
     content_urls = [download_get_signed_up(filename, bucket_name) for filename in filenames] 
     
-    print(content_urls)
-
-    
     body = {
         'contentUrls': content_urls,
         'locale': language_code,
@@ -146,7 +144,6 @@ def start_transcribing(filenames, language_code):
     endpoint = f'https://{region}.api.cognitive.microsoft.com/speechtotext/v3.0/transcriptions'
     headers = {'Ocp-Apim-Subscription-Key': subscription_key}
     response = requests.post(endpoint, json=body, headers=headers).json()
-    print(response)
     transcription_id = response['self'].split('/')[-1]
 
     data = {
@@ -161,7 +158,6 @@ def get_transcription_status(transcription_id):
     endpoint = f'https://{region}.api.cognitive.microsoft.com/speechtotext/v3.0/transcriptions/{transcription_id}'
     headers = {'Ocp-Apim-Subscription-Key': subscription_key}
     response = requests.get(endpoint, headers=headers).json()
-    print(response)
     status = response['status']
     return status
 
