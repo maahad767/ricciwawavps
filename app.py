@@ -7,6 +7,7 @@ import requests
 import os
 import datetime
 import json
+import time
 
 from flask import Flask
 import subprocess
@@ -24,6 +25,7 @@ def main():
 
 @app.route('/transcription/start/<filename>/')
 def initiate_transcribing(filename):
+    start = time.time()
     bucket_name = "ricciwawa_mp3"
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(filename)
@@ -50,6 +52,7 @@ def initiate_transcribing(filename):
     bucket = storage_client.bucket("ricciwawa_tmp_files")
     results = []
 
+    mid = time.time()
     for each_file_name in file_list:
         blob = (bucket.blob(each_file_name))
         blob.upload_from_filename(each_file_name)
@@ -61,10 +64,19 @@ def initiate_transcribing(filename):
     datastore_client.put(task)
     subprocess.run(f"rm out_{fname}_*.wav", shell=True)
     subprocess.run(f'rm {filename}', shell=True)
+    end = time.time()
+    # the time taken to segment the file using ffmpeg
+    print(round(mid-start, 2), 'seconds')
+    # the time taken to upload the files to cloud storage
+    print(round(end-mid, 2), 'seconds')
+    # the time taken to respond to the request
+    print(round(end-start, 2), 'seconds')
+    
     return {"status": "started", "transcript_id": fname}
 
 @app.route('/transcription/result/<tid>/')
 def get_transcription(tid):
+    start = time.time()
     kind = 'TranscriptionTask'
     task = datastore_client.get(key=datastore_client.key(kind, tid))
     if task is None:
@@ -90,7 +102,10 @@ def get_transcription(tid):
        # task['transcript'] = transcript   
         task['status'] = 'completed'
         datastore_client.put(task)
-        print("che")
+        # the time taken to complete seeking the result
+        end = time.time()
+        print(round(end-start, 2), 'seconds')
+        
         return json.dumps({"status": "success", 
                 "transcript": transcript}, ensure_ascii=False).encode('utf8')
     
