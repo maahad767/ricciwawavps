@@ -48,11 +48,10 @@ def initiate_transcribing(filename):
     task = datastore.Entity(key=task_key)
     task['fname'] = fname
     task["status"] = "not-started"
-    # subprocess.run('ls -al', shell=True)
-    # subprocess.run('ffmpeg -version', shell=True)
     subprocess.run(f"ffmpeg -i {filename} -f segment -segment_time 30 -c copy out_{fname}_%03d.wav", shell=True)
-    #subprocess.run(f'rm {filename}')
     file_list = glob.glob(f"out_{fname}_*.wav")
+    file_list.sort()
+    # print(file_list)
     bucket = storage_client.bucket("ricciwawa_tmp_files")
     results = []
 
@@ -168,9 +167,13 @@ def get_transcription_url(transcription_id):
     subscription_key = "d054b5988d384c6da942e00133de18e7"  # transfer this to settings.py
     region = "centralus"  # transfer this to settings.py
     endpoint = f'https://{region}.api.cognitive.microsoft.com/speechtotext/v3.0/transcriptions/{transcription_id}/files'
+    print(endpoint)
     headers = {'Ocp-Apim-Subscription-Key': subscription_key}
     response = requests.get(endpoint, headers=headers).json()
-    transcription_urls = [val['links']['contentUrl'] for val in response['values']]
+    values = response['values'][1:]
+    values.sort(key=lambda val: int(val['name'].split('.')[0].split('_')[-1]))
+    print(values)
+    transcription_urls = [val['links']['contentUrl'] for val in values]
     data = {
         'transcription_urls': transcription_urls,
     }
