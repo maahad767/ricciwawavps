@@ -8,7 +8,7 @@ import os
 import datetime
 import json
 import time
-
+from pprint import pprint
 from flask import Flask
 import subprocess
 import logging
@@ -26,6 +26,7 @@ app.logger.setLevel(gunicorn_logger.level)
 def main():
     return "Hello World"
 
+
 @app.route('/transcription/start/<filename>/')
 def initiate_transcribing(filename):
     start = time.time()
@@ -39,11 +40,11 @@ def initiate_transcribing(filename):
     fname, ext = filename.split(".")
     if ext == 'mp4':
         subprocess.run(f"ffmpeg -y -i {filename} -ac 1 -ar 16000 {fname}.wav", shell=True)
+        subprocess.run(f'rm {filename}', shell=True)
         filename = f"{fname}.wav"
     
     kind = "TranscriptionTask"
     task_key = datastore_client.key(kind, fname)
-    print(task_key)
     task = datastore.Entity(key=task_key)
     task['fname'] = fname
     task["status"] = "not-started"
@@ -75,6 +76,7 @@ def initiate_transcribing(filename):
     
     return {"status": "started", "transcript_id": fname}
 
+
 @app.route('/transcription/result/<tid>/')
 def get_transcription(tid):
     start = time.time()
@@ -86,11 +88,11 @@ def get_transcription(tid):
     success_flag = True
     text_url_list = []
     for transcription_id in task['transcription_ids']:
-        result_status = get_transcription_status(transcription_id["transcription_id"])
+        result_status = get_transcription_status(transcription_id['transcription_id'])
         
         if result_status=="Succeeded":
-            result_url = get_transcription_url (transcription_id["transcription_id"])
-            text_url_list.append(result_url["transcription_url"])
+            result_url = get_transcription_url(transcription_id['transcription_id'])
+            text_url_list.extend(result_url["transcription_urls"])
         else:
             success_flag = False
     
@@ -100,7 +102,6 @@ def get_transcription(tid):
             response = requests.get(url).json()
             if 'combinedRecognizedPhrases' in response and response['combinedRecognizedPhrases']:
                 transcript = transcript + response['combinedRecognizedPhrases'][0]['display']
-       # task['transcript'] = transcript   
         task['status'] = 'completed'
         datastore_client.put(task)
         # the time taken to complete seeking the result
@@ -113,6 +114,7 @@ def get_transcription(tid):
     task['status'] = 'incomplete'
     datastore_client.put(task)
     return {"status": "incomplete"}
+
 
 # utils.py
 def download_get_signed_up(filename, bucket_name="ricciwawa_mp3"):
@@ -127,8 +129,8 @@ def download_get_signed_up(filename, bucket_name="ricciwawa_mp3"):
         method="GET",
     )
 
-    # print("curl '{}'".format(url))
     return url
+
 
 def start_transcribing(filenames, language_code):
     bucket_name = "ricciwawa_tmp_files"
@@ -161,18 +163,19 @@ def get_transcription_status(transcription_id):
     status = response['status']
     return status
 
+
 def get_transcription_url(transcription_id):
     subscription_key = "d054b5988d384c6da942e00133de18e7"  # transfer this to settings.py
     region = "centralus"  # transfer this to settings.py
     endpoint = f'https://{region}.api.cognitive.microsoft.com/speechtotext/v3.0/transcriptions/{transcription_id}/files'
     headers = {'Ocp-Apim-Subscription-Key': subscription_key}
     response = requests.get(endpoint, headers=headers).json()
+    transcription_urls = [val['links']['contentUrl'] for val in response['values']]
     data = {
-        'transcription_url': response['values'][1]['links']['contentUrl'],
+        'transcription_urls': transcription_urls,
     }
     return data
 
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0')
-

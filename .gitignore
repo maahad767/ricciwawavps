@@ -144,3 +144,4 @@ cython_debug/
 /latest.dump
 
 *.wav
+*.mp4
